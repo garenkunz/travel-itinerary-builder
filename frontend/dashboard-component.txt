@@ -1,0 +1,274 @@
+import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { Calendar, MapPin, DollarSign, Clock, Search, Plus, Edit, Trash2, Share2 } from 'lucide-react';
+import axios from 'axios';
+import { format } from 'date-fns';
+
+const Dashboard = () => {
+  const [itineraries, setItineraries] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [subscription, setSubscription] = useState('free');
+  const navigate = useNavigate();
+  
+  useEffect(() => {
+    // Get user's itineraries
+    const fetchItineraries = async () => {
+      try {
+        const token = localStorage.getItem('token');
+        if (!token) {
+          navigate('/login');
+          return;
+        }
+        
+        const res = await axios.get('/api/itineraries', {
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        });
+        
+        setItineraries(res.data.data.itineraries);
+        setLoading(false);
+        
+        // Get subscription status
+        const subscriptionRes = await axios.get('/api/payments/subscription', {
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        });
+        
+        setSubscription(subscriptionRes.data.data.subscription);
+      } catch (error) {
+        console.error('Error fetching itineraries:', error);
+        setLoading(false);
+        
+        if (error.response && error.response.status === 401) {
+          navigate('/login');
+        }
+      }
+    };
+    
+    fetchItineraries();
+  }, [navigate]);
+  
+  const handleCreateNew = () => {
+    navigate('/create');
+  };
+  
+  const handleDelete = async (id) => {
+    if (window.confirm('Are you sure you want to delete this itinerary?')) {
+      try {
+        const token = localStorage.getItem('token');
+        
+        await axios.delete(`/api/itineraries/${id}`, {
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        });
+        
+        setItineraries(itineraries.filter(itinerary => itinerary._id !== id));
+      } catch (error) {
+        console.error('Error deleting itinerary:', error);
+      }
+    }
+  };
+  
+  const handleSearch = (e) => {
+    setSearchQuery(e.target.value);
+  };
+  
+  const handleShare = async (id) => {
+    try {
+      const token = localStorage.getItem('token');
+      
+      const res = await axios.post(`/api/itineraries/${id}/share`, {}, {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      });
+      
+      // Copy link to clipboard
+      navigator.clipboard.writeText(res.data.data.shareableLink);
+      
+      alert('Shareable link copied to clipboard!');
+    } catch (error) {
+      console.error('Error creating shareable link:', error);
+    }
+  };
+  
+  // Filter itineraries based on search query
+  const filteredItineraries = itineraries.filter(itinerary => 
+    itinerary.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    itinerary.destination.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+  
+  return (
+    <div className="min-h-screen bg-gray-50">
+      {/* Header */}
+      <header className="bg-white shadow-sm">
+        <div className="container mx-auto px-4 py-4 flex justify-between items-center">
+          <div className="flex items-center">
+            <span className="text-2xl font-bold bg-gradient-to-r from-[#4d7b93] to-[#8351a8] text-transparent bg-clip-text">WanderPlan</span>
+          </div>
+          <nav>
+            <ul className="flex space-x-6">
+              <li><a href="/dashboard" className="text-[#4d7b93] font-medium">My Itineraries</a></li>
+              <li><a href="/account" className="text-gray-600 hover:text-[#4d7b93] transition">Account</a></li>
+              <li>
+                {subscription === 'premium' ? (
+                  <span className="bg-[#b45dbb] text-white px-4 py-2 rounded-md">Premium</span>
+                ) : (
+                  <a href="/upgrade" className="bg-[#8351a8] text-white px-4 py-2 rounded-md hover:bg-[#6f3d91] transition">Upgrade</a>
+                )}
+              </li>
+            </ul>
+          </nav>
+        </div>
+      </header>
+      
+      <main className="container mx-auto px-4 py-8">
+        <div className="flex flex-col md:flex-row justify-between items-center mb-8">
+          <h1 className="text-3xl font-bold mb-4 md:mb-0">My Itineraries</h1>
+          
+          <div className="flex items-center space-x-3">
+            <div className="relative">
+              <Search className="absolute left-3 top-2.5 text-gray-400" size={18} />
+              <input
+                type="text"
+                placeholder="Search itineraries..."
+                value={searchQuery}
+                onChange={handleSearch}
+                className="pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#4d7b93] w-48 md:w-64"
+              />
+            </div>
+            
+            <button 
+              onClick={handleCreateNew}
+              className="flex items-center bg-[#4d7b93] text-white px-4 py-2 rounded-md hover:bg-[#3c6175] transition"
+            >
+              <Plus size={18} className="mr-2" />
+              New Itinerary
+            </button>
+          </div>
+        </div>
+        
+        {loading ? (
+          <div className="flex justify-center items-center h-64">
+            <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-[#4d7b93]"></div>
+          </div>
+        ) : filteredItineraries.length === 0 ? (
+          <div className="bg-white rounded-lg shadow-md p-8 text-center">
+            <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <MapPin className="text-gray-500" size={24} />
+            </div>
+            <h2 className="text-xl font-bold mb-2">No itineraries yet</h2>
+            <p className="text-gray-600 mb-6">Start planning your next adventure today!</p>
+            <button 
+              onClick={handleCreateNew}
+              className="bg-[#4d7b93] text-white px-6 py-2 rounded-md hover:bg-[#3c6175] transition"
+            >
+              Create Your First Itinerary
+            </button>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {filteredItineraries.map(itinerary => (
+              <div key={itinerary._id} className="bg-white rounded-lg shadow-md overflow-hidden">
+                <div className="h-40 bg-gray-300 relative">
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent flex items-end">
+                    <div className="p-4 text-white">
+                      <h2 className="text-xl font-bold">{itinerary.destination}</h2>
+                      <div className="flex items-center text-sm">
+                        <Calendar size={14} className="mr-1" />
+                        <span>
+                          {format(new Date(itinerary.startDate), 'MMM d')} - {format(new Date(itinerary.endDate), 'MMM d, yyyy')}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="p-4">
+                  <h3 className="font-medium mb-3">{itinerary.title}</h3>
+                  
+                  <div className="flex items-center text-sm text-gray-600 mb-2">
+                    <Clock size={14} className="mr-1" />
+                    <span>{itinerary.days.length} days</span>
+                  </div>
+                  
+                  {itinerary.budget && (
+                    <div className="flex items-center text-sm text-gray-600 mb-2">
+                      <DollarSign size={14} className="mr-1" />
+                      <span>Budget: ${itinerary.budget}</span>
+                    </div>
+                  )}
+                  
+                  <div className="flex items-center text-sm text-gray-600 mb-4">
+                    <span>Pace: {itinerary.pace}</span>
+                  </div>
+                  
+                  <div className="flex flex-wrap gap-2 mb-4">
+                    {itinerary.interests.map((interest, index) => (
+                      <span 
+                        key={index}
+                        className="text-xs bg-gray-100 text-gray-700 px-2 py-1 rounded-md"
+                      >
+                        {interest}
+                      </span>
+                    ))}
+                  </div>
+                  
+                  <div className="flex justify-between mt-4">
+                    <div className="flex space-x-2">
+                      <button 
+                        onClick={() => navigate(`/itinerary/${itinerary._id}`)}
+                        className="flex items-center text-[#4d7b93] hover:text-[#3c6175] transition"
+                      >
+                        <Edit size={16} className="mr-1" />
+                        View
+                      </button>
+                      <button 
+                        onClick={() => handleDelete(itinerary._id)}
+                        className="flex items-center text-red-500 hover:text-red-600 transition"
+                      >
+                        <Trash2 size={16} className="mr-1" />
+                        Delete
+                      </button>
+                    </div>
+                    <button 
+                      onClick={() => handleShare(itinerary._id)}
+                      className="flex items-center text-gray-600 hover:text-gray-800 transition"
+                    >
+                      <Share2 size={16} className="mr-1" />
+                      Share
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+        
+        {/* Upgrade Banner (Only for free users) */}
+        {subscription === 'free' && (
+          <div className="mt-12 bg-gradient-to-r from-[#4d7b93] to-[#8351a8] rounded-lg p-6 text-white">
+            <div className="flex flex-col md:flex-row justify-between items-center">
+              <div>
+                <h2 className="text-xl font-bold mb-2">Upgrade to Premium</h2>
+                <p className="mb-4 md:mb-0">Get unlimited itineraries, premium recommendations, and exclusive deals for just $30/month.</p>
+              </div>
+              <a 
+                href="/upgrade"
+                className="bg-white text-[#8351a8] px-6 py-2 rounded-md hover:bg-gray-100 transition font-medium"
+              >
+                Upgrade Now
+              </a>
+            </div>
+          </div>
+        )}
+      </main>
+    </div>
+  );
+};
+
+export default Dashboard;

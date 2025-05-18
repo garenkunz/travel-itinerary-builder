@@ -1,0 +1,440 @@
+import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { User, Mail, CreditCard, ChevronRight, Calendar, Shield, LogOut, CheckCircle, AlertCircle, X } from 'lucide-react';
+import axios from 'axios';
+import { format } from 'date-fns';
+
+const Account = () => {
+  const navigate = useNavigate();
+  
+  const [user, setUser] = useState(null);
+  const [subscription, setSubscription] = useState('free');
+  const [subscriptionEndDate, setSubscriptionEndDate] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [upgradeLoading, setUpgradeLoading] = useState(false);
+  const [cancelLoading, setCancelLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [success, setSuccess] = useState(null);
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
+  
+  useEffect(() => {
+    // Get user data and subscription status
+    const fetchUserData = async () => {
+      try {
+        const token = localStorage.getItem('token');
+        if (!token) {
+          navigate('/login');
+          return;
+        }
+        
+        // Get user profile
+        const userRes = await axios.get('/api/auth/me', {
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        });
+        
+        setUser(userRes.data.data.user);
+        
+        // Get subscription status
+        const subscriptionRes = await axios.get('/api/payments/subscription', {
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        });
+        
+        setSubscription(subscriptionRes.data.data.subscription);
+        if (subscriptionRes.data.data.subscriptionEndDate) {
+          setSubscriptionEndDate(new Date(subscriptionRes.data.data.subscriptionEndDate));
+        }
+        
+        setLoading(false);
+      } catch (error) {
+        setLoading(false);
+        
+        if (error.response && error.response.status === 401) {
+          navigate('/login');
+        }
+      }
+    };
+    
+    fetchUserData();
+    
+    // Check if coming from an upgrade
+    const urlParams = new URLSearchParams(window.location.search);
+    const subscriptionParam = urlParams.get('subscription');
+    
+    if (subscriptionParam === 'success') {
+      setSuccess('Your subscription has been successfully upgraded to Premium!');
+    } else if (subscriptionParam === 'cancel') {
+      setError('Your subscription upgrade was canceled.');
+    }
+    
+    // Remove query params
+    if (subscriptionParam) {
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+  }, [navigate]);
+  
+  const handleUpgrade = async () => {
+    try {
+      setUpgradeLoading(true);
+      setError(null);
+      
+      const token = localStorage.getItem('token');
+      
+      const res = await axios.post('/api/payments/create-subscription', {}, {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      });
+      
+      // Redirect to Stripe checkout
+      if (res.data.data.url) {
+        window.location.href = res.data.data.url;
+      } else {
+        alert('Error creating checkout session. Please try again.');
+      }
+      
+      setUpgradeLoading(false);
+    } catch (error) {
+      setUpgradeLoading(false);
+      
+      if (error.response && error.response.data) {
+        setError(error.response.data.message);
+      } else {
+        setError('An error occurred. Please try again.');
+      }
+    }
+  };
+  
+  const handleCancelConfirm = () => {
+    setShowConfirmModal(true);
+  };
+  
+  const handleCancelSubscription = async () => {
+    try {
+      setCancelLoading(true);
+      
+      const token = localStorage.getItem('token');
+      
+      const res = await axios.post('/api/payments/cancel-subscription', {}, {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      });
+      
+      setCancelLoading(false);
+      setShowConfirmModal(false);
+      
+      setSuccess(res.data.message);
+      // The subscription will remain active until the end date
+      setSubscriptionEndDate(new Date(res.data.data.cancelDate));
+    } catch (error) {
+      setCancelLoading(false);
+      
+      if (error.response && error.response.data) {
+        setError(error.response.data.message);
+      } else {
+        setError('An error occurred. Please try again.');
+      }
+    }
+  };
+  
+  const handleLogout = () => {
+    localStorage.removeItem('token');
+    navigate('/login');
+  };
+  
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex justify-center items-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-[#4d7b93]"></div>
+      </div>
+    );
+  }
+  
+  return (
+    <div className="min-h-screen bg-gray-50">
+      {/* Header */}
+      <header className="bg-white shadow-sm">
+        <div className="container mx-auto px-4 py-4 flex justify-between items-center">
+          <div className="flex items-center">
+            <span className="text-2xl font-bold bg-gradient-to-r from-[#4d7b93] to-[#8351a8] text-transparent bg-clip-text">WanderPlan</span>
+          </div>
+          <nav>
+            <ul className="flex space-x-6">
+              <li><a href="/dashboard" className="text-gray-600 hover:text-[#4d7b93] transition">My Itineraries</a></li>
+              <li><a href="/account" className="text-[#4d7b93] font-medium">Account</a></li>
+            </ul>
+          </nav>
+        </div>
+      </header>
+      
+      <main className="container mx-auto px-4 py-8">
+        <h1 className="text-2xl font-bold mb-8">Account Settings</h1>
+        
+        {/* Notification Banners */}
+        {error && (
+          <div className="mb-6 bg-red-50 text-red-600 p-4 rounded-md flex items-start">
+            <AlertCircle size={20} className="mr-3 mt-0.5 flex-shrink-0" />
+            <div className="flex-grow">{error}</div>
+            <button 
+              onClick={() => setError(null)}
+              className="text-red-500 hover:text-red-700"
+            >
+              <X size={18} />
+            </button>
+          </div>
+        )}
+        
+        {success && (
+          <div className="mb-6 bg-green-50 text-green-600 p-4 rounded-md flex items-start">
+            <CheckCircle size={20} className="mr-3 mt-0.5 flex-shrink-0" />
+            <div className="flex-grow">{success}</div>
+            <button 
+              onClick={() => setSuccess(null)}
+              className="text-green-500 hover:text-green-700"
+            >
+              <X size={18} />
+            </button>
+          </div>
+        )}
+        
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {/* Left Column: User Info */}
+          <div className="md:col-span-2">
+            <div className="bg-white rounded-lg shadow-md p-6 mb-6">
+              <h2 className="text-lg font-semibold mb-4">Account Information</h2>
+              
+              <div className="mb-6 pb-6 border-b border-gray-200">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center">
+                    <div className="w-10 h-10 bg-[#4d7b93] rounded-full flex items-center justify-center text-white mr-3">
+                      <User size={20} />
+                    </div>
+                    <div>
+                      <p className="font-medium">{user.name}</p>
+                      <p className="text-sm text-gray-500">Your Name</p>
+                    </div>
+                  </div>
+                  <button className="text-[#4d7b93] hover:text-[#3c6175] text-sm font-medium">
+                    Edit
+                  </button>
+                </div>
+              </div>
+              
+              <div className="mb-6 pb-6 border-b border-gray-200">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center">
+                    <div className="w-10 h-10 bg-[#8351a8] rounded-full flex items-center justify-center text-white mr-3">
+                      <Mail size={20} />
+                    </div>
+                    <div>
+                      <p className="font-medium">{user.email}</p>
+                      <p className="text-sm text-gray-500">Email Address</p>
+                    </div>
+                  </div>
+                  <button className="text-[#4d7b93] hover:text-[#3c6175] text-sm font-medium">
+                    Change
+                  </button>
+                </div>
+              </div>
+              
+              <div>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center">
+                    <div className="w-10 h-10 bg-[#b45dbb] rounded-full flex items-center justify-center text-white mr-3">
+                      <Shield size={20} />
+                    </div>
+                    <div>
+                      <p className="font-medium">Password</p>
+                      <p className="text-sm text-gray-500">••••••••</p>
+                    </div>
+                  </div>
+                  <button className="text-[#4d7b93] hover:text-[#3c6175] text-sm font-medium">
+                    Update
+                  </button>
+                </div>
+              </div>
+            </div>
+            
+            <div className="bg-white rounded-lg shadow-md p-6">
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-lg font-semibold">Security & Preferences</h2>
+              </div>
+              
+              <div className="space-y-4">
+                <button className="w-full flex items-center justify-between p-3 hover:bg-gray-50 rounded-md transition">
+                  <div className="flex items-center">
+                    <div className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center text-gray-500 mr-3">
+                      <Calendar size={16} />
+                    </div>
+                    <span>Notification Settings</span>
+                  </div>
+                  <ChevronRight size={18} className="text-gray-400" />
+                </button>
+                
+                <button className="w-full flex items-center justify-between p-3 hover:bg-gray-50 rounded-md transition">
+                  <div className="flex items-center">
+                    <div className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center text-gray-500 mr-3">
+                      <CreditCard size={16} />
+                    </div>
+                    <span>Payment Methods</span>
+                  </div>
+                  <ChevronRight size={18} className="text-gray-400" />
+                </button>
+                
+                <button 
+                  onClick={handleLogout}
+                  className="w-full flex items-center justify-between p-3 hover:bg-red-50 text-red-500 rounded-md transition"
+                >
+                  <div className="flex items-center">
+                    <div className="w-8 h-8 bg-red-100 rounded-full flex items-center justify-center text-red-500 mr-3">
+                      <LogOut size={16} />
+                    </div>
+                    <span>Sign Out</span>
+                  </div>
+                </button>
+              </div>
+            </div>
+          </div>
+          
+          {/* Right Column: Subscription Info */}
+          <div>
+            <div className="bg-white rounded-lg shadow-md overflow-hidden">
+              <div className={`p-6 ${subscription === 'premium' ? 'bg-gradient-to-r from-[#4d7b93] to-[#8351a8] text-white' : 'bg-gray-50'}`}>
+                <h2 className="text-lg font-semibold mb-2">
+                  {subscription === 'premium' ? 'Premium Plan' : 'Free Plan'}
+                </h2>
+                <p className={`text-sm ${subscription === 'premium' ? 'text-white/80' : 'text-gray-500'}`}>
+                  {subscription === 'premium' ? 'You\'re on the premium plan' : 'Upgrade for more features'}
+                </p>
+              </div>
+              
+              <div className="p-6">
+                <div className="mb-6">
+                  <h3 className="font-medium mb-3">Your plan includes:</h3>
+                  <ul className="space-y-2">
+                    {subscription === 'premium' ? (
+                      <>
+                        <li className="flex items-center text-sm">
+                          <CheckCircle size={16} className="text-green-500 mr-2" />
+                          <span>Unlimited itineraries</span>
+                        </li>
+                        <li className="flex items-center text-sm">
+                          <CheckCircle size={16} className="text-green-500 mr-2" />
+                          <span>Premium recommendations</span>
+                        </li>
+                        <li className="flex items-center text-sm">
+                          <CheckCircle size={16} className="text-green-500 mr-2" />
+                          <span>Full customization options</span>
+                        </li>
+                        <li className="flex items-center text-sm">
+                          <CheckCircle size={16} className="text-green-500 mr-2" />
+                          <span>Access to exclusive deals</span>
+                        </li>
+                      </>
+                    ) : (
+                      <>
+                        <li className="flex items-center text-sm">
+                          <CheckCircle size={16} className="text-green-500 mr-2" />
+                          <span>3 itineraries per month</span>
+                        </li>
+                        <li className="flex items-center text-sm">
+                          <CheckCircle size={16} className="text-green-500 mr-2" />
+                          <span>Basic customization</span>
+                        </li>
+                        <li className="flex items-center text-sm text-gray-400">
+                          <X size={16} className="mr-2" />
+                          <span>Premium recommendations</span>
+                        </li>
+                        <li className="flex items-center text-sm text-gray-400">
+                          <X size={16} className="mr-2" />
+                          <span>Access to exclusive deals</span>
+                        </li>
+                      </>
+                    )}
+                  </ul>
+                </div>
+                
+                {subscription === 'premium' && subscriptionEndDate && (
+                  <div className="mb-6 pb-6 border-b border-gray-200">
+                    <p className="text-sm text-gray-500 mb-1">Your subscription renews on:</p>
+                    <p className="font-medium">{format(subscriptionEndDate, 'MMMM d, yyyy')}</p>
+                  </div>
+                )}
+                
+                {subscription === 'premium' ? (
+                  <button
+                    onClick={handleCancelConfirm}
+                    className="w-full py-2 px-4 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 transition text-sm font-medium"
+                  >
+                    Cancel Subscription
+                  </button>
+                ) : (
+                  <button
+                    onClick={handleUpgrade}
+                    className="w-full py-2 px-4 bg-[#8351a8] text-white rounded-md hover:bg-[#6f3d91] transition text-sm font-medium flex justify-center items-center"
+                    disabled={upgradeLoading}
+                  >
+                    {upgradeLoading ? (
+                      <>
+                        <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent mr-2"></div>
+                        Processing...
+                      </>
+                    ) : (
+                      'Upgrade to Premium - $30/month'
+                    )}
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      </main>
+      
+      {/* Confirmation Modal */}
+      {showConfirmModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg max-w-md w-full p-6">
+            <div className="text-center mb-6">
+              <div className="mx-auto w-12 h-12 rounded-full bg-red-100 flex items-center justify-center mb-4">
+                <AlertCircle size={24} className="text-red-500" />
+              </div>
+              <h3 className="text-lg font-bold mb-2">Cancel Subscription?</h3>
+              <p className="text-gray-600">
+                Are you sure you want to cancel your premium subscription? You'll still have access to premium features until the end of your current billing period.
+              </p>
+            </div>
+            
+            <div className="flex space-x-3">
+              <button
+                onClick={() => setShowConfirmModal(false)}
+                className="flex-1 py-2 px-4 border border-gray-300 rounded-md hover:bg-gray-50 transition font-medium"
+              >
+                Keep Subscription
+              </button>
+              <button
+                onClick={handleCancelSubscription}
+                className="flex-1 py-2 px-4 bg-red-500 text-white rounded-md hover:bg-red-600 transition font-medium flex justify-center items-center"
+                disabled={cancelLoading}
+              >
+                {cancelLoading ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent mr-2"></div>
+                    Processing...
+                  </>
+                ) : (
+                  'Yes, Cancel'
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default Account;
